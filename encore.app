@@ -1,6 +1,5 @@
-name: cnmgfw-encore
+name: cnmgfw-ncore-grq2
 
-# 
 services:
-  - name: tes-service
+  - name: my-service
     source: .
