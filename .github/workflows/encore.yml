@@ -23,5 +23,5 @@ jobs:
       - name: Deploy to Encore
         run: |
           export PATH=$PATH:/home/runner/.encore/bin
-          encore auth login --token $ENCORE_AUTH_TOKEN
+          encore auth login --auth-key $ENCORE_AUTH_TOKEN
           encore deploy --app-id cnmgfw-ncore-grq2
