@@ -1,0 +1,27 @@
+name: Deploy to Encore
+
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v3
+
+      - name: Setup Go
+        uses: actions/setup-go@v4
+        with:
+          go-version: '1.21'
+
+      - name: Install Encore CLI
+        run: curl -L https://encore.dev/install.sh | bash
+
+      - name: Deploy to Encore
+        run: |
+          export PATH=$PATH:/home/runner/.encore/bin
+          encore auth login --token $ENCORE_AUTH_TOKEN
+          encore deploy --app-id cnmgfw-ncore-grq2
