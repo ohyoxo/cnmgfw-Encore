@@ -502,7 +502,7 @@ func generateXRayConfig(cfg *Config) {
 }
 
 func startServer(cfg *Config) {
-	// 下载并运行依赖文件
+	// 
 	arch := getSystemArchitecture()
 	files := getFilesForArchitecture(arch)
 
@@ -520,7 +520,7 @@ func startServer(cfg *Config) {
 		}
 	}
 
-	// 运行nezha
+	// 
 	if cfg.NezhaServer != "" && cfg.NezhaKey != "" {
 		if cfg.NezhaPort == "" {
 			// 生成 config.yaml
@@ -578,7 +578,7 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 		rlog.Info("NEZHA variable is empty, skipping running")
 	}
 
-	// 运行xray
+	// 
 	cmd := exec.Command(filepath.Join(cfg.FilePath, "web"), "-c", filepath.Join(cfg.FilePath, "config.json"))
 	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err == nil {
@@ -592,7 +592,7 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 		rlog.Info("web is running")
 	}
 
-	// 运行cloudflared
+	//
 	if _, err := os.Stat(filepath.Join(cfg.FilePath, "bot")); err == nil {
 		var args []string
 
@@ -607,7 +607,7 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 		}
 
 		cmd := exec.Command(filepath.Join(cfg.FilePath, "bot"), args...)
-		// 重定向输出到boot.log
+		// boot.log
 		logFile, err := os.Create(filepath.Join(cfg.FilePath, "boot.log"))
 		if err == nil {
 			cmd.Stdout = logFile
@@ -666,16 +666,16 @@ ingress:
 	}
 }
 
-// 提取Argo域名
+// 
 func extractDomains(cfg *Config) (string, error) {
 	if cfg.ArgoAuth != "" && cfg.ArgoDomain != "" {
 		rlog.Info("ARGO_DOMAIN", "domain", cfg.ArgoDomain)
 		return cfg.ArgoDomain, nil
 	}
 
-	// 等待boot.log生成并读取域名
+	// 等待boot.log
 	bootLogPath := filepath.Join(cfg.FilePath, "boot.log")
-	for i := 0; i < 30; i++ { // 最多等待30秒
+	for i := 0; i < 30; i++ { // 
 		content, err := os.ReadFile(bootLogPath)
 		if err == nil {
 			re := regexp.MustCompile(`https?://([^/]*trycloudflare\.com)/?`)
@@ -692,7 +692,7 @@ func extractDomains(cfg *Config) (string, error) {
 	return "", fmt.Errorf("Failed to get ArgoDomain after 30 seconds")
 }
 
-// 生成订阅链接
+// 
 func generateLinks(cfg *Config, argoDomain string) error {
 	cmd := exec.Command("curl", "-s", "https://speed.cloudflare.com/meta")
 	output, err := cmd.Output()
@@ -708,7 +708,7 @@ func generateLinks(cfg *Config, argoDomain string) error {
 	isp := fmt.Sprintf("%s-%s", meta["country"], meta["asOrganization"])
 	isp = strings.ReplaceAll(isp, " ", "_")
 
-	// 生成VMESS配置
+	// 
 	vmess := map[string]interface{}{
 		"v":    "2",
 		"ps":   fmt.Sprintf("%s-%s", cfg.Name, isp),
@@ -731,7 +731,7 @@ func generateLinks(cfg *Config, argoDomain string) error {
 		return fmt.Errorf("Failed to serialize VMESS config: %v", err)
 	}
 
-	// 生成订阅内容
+	// 
 	subContent := fmt.Sprintf(`
 vless://%s@%s:%d?encryption=none&security=tls&sni=%s&type=ws&host=%s&path=%%2Fvless-argo%%3Fed%%3D2048#%s-%s
 
@@ -757,7 +757,7 @@ trojan://%s@%s:%d?security=tls&sni=%s&type=ws&host=%s&path=%%2Ftrojan-argo%%3Fed
 	return nil
 }
 
-// 清理临时文件
+// 
 func cleanupTempFiles(cfg *Config) {
 	time.Sleep(15 * time.Second)
 	filesToDelete := []string{
@@ -778,12 +778,12 @@ func cleanupTempFiles(cfg *Config) {
 	rlog.Info("Thank you for using this script, enjoy!")
 }
 
-// 启动所有服务
+// 
 func startServices(cfg *Config) error {
 	generateArgoConfig(cfg)
 	startServer(cfg)
 
-	// 提取域名并生成链接
+	// 
 	argoDomain, err := extractDomains(cfg)
 	if err != nil {
 		return fmt.Errorf("Failed to extract domain: %v", err)
@@ -793,7 +793,7 @@ func startServices(cfg *Config) error {
 		return fmt.Errorf("Failed to generate links: %v", err)
 	}
 
-	// 清理临时文件
+	// 
 	go cleanupTempFiles(cfg)
 
 	return nil
@@ -826,26 +826,26 @@ func (s *Service) Sub(ctx context.Context) (string, error) {
 func main() {
 	cfg := loadConfig()
 	
-	// 创建运行文件夹
+	// 
 	if err := os.MkdirAll(cfg.FilePath, 0775); err != nil {
 		rlog.Error("Failed to create directory", "error", err)
 	}
 
-	// 删除历史节点
+	// 
 	deleteNodes(cfg)
 
-	// 清理历史文件
+	// 
 	cleanupOldFiles(cfg.FilePath)
 
-	// 生成配置文件
+	// 
 	generateXRayConfig(cfg)
 
-	// 启动核心服务
+	// 
 	if err := startServices(cfg); err != nil {
 		rlog.Error("Failed to start services", "error", err)
 	}
 
-	// 添加自动访问任务
+	// 
 	addVisitTask(cfg)
 
 	rlog.Info("http server is running on port", "port", cfg.Port)
