@@ -137,7 +137,7 @@ func deleteNodes(cfg *Config) error {
 	return nil
 }
 
-// 上传节点或订阅
+// 
 func uploadNodes(cfg *Config) {
 	if cfg.UploadURL == "" && cfg.ProjectURL == "" {
 		return
@@ -162,7 +162,7 @@ func uploadNodes(cfg *Config) {
 			resp.Body.Close()
 		}
 	} else if cfg.UploadURL != "" {
-		// 上传节点
+		// 
 		subPath := filepath.Join(cfg.FilePath, "sub.txt")
 		if _, err := os.Stat(subPath); os.IsNotExist(err) {
 			return
@@ -207,7 +207,7 @@ func uploadNodes(cfg *Config) {
 	}
 }
 
-// 添加自动访问任务
+// 
 func addVisitTask(cfg *Config) {
 	if !cfg.AutoAccess || cfg.ProjectURL == "" {
 		rlog.Info("Skipping adding automatic access task")
@@ -232,7 +232,7 @@ func addVisitTask(cfg *Config) {
 	rlog.Info("automatic access task added successfully")
 }
 
-// XRay配置结构
+// 
 type XRayConfig struct {
 	Log       LogConfig      `json:"log"`
 	Inbounds  []Inbound      `json:"inbounds"`
