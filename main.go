@@ -18,10 +18,10 @@ import (
 	"strings"
 	"time"
 
-	"encore.dev/rlog" // Encore log
+	"encore.dev/rlog" // Encore 的日志库
 )
 
-// 
+// 环境变量配置
 type Config struct {
 	UploadURL    string
 	ProjectURL   string
@@ -63,13 +63,8 @@ func loadConfig() *Config {
 }
 
 //encore:service
-type Service struct{}
-
-func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return defaultValue
+type Service struct {
+	cfg *Config
 }
 
 func getEnvAsBool(key string, defaultValue bool) bool {
@@ -79,16 +74,6 @@ func getEnvAsBool(key string, defaultValue bool) bool {
 	return defaultValue
 }
 
-func getEnvAsInt(key string, defaultValue int) int {
-	if value, exists := os.LookupEnv(key); exists {
-		if i, err := strconv.Atoi(value); err == nil {
-			return i
-		}
-	}
-	return defaultValue
-}
-
-// 删除历史节点
 func deleteNodes(cfg *Config) error {
 	if cfg.UploadURL == "" {
 		return nil
@@ -123,38 +108,36 @@ func deleteNodes(cfg *Config) error {
 	jsonData := map[string]interface{}{
 		"nodes": nodes,
 	}
-	
+
 	jsonBytes, _ := json.Marshal(jsonData)
-	resp, err := http.Post(cfg.UploadURL+"/api/delete-nodes", 
-		"application/json", 
+	resp, err := http.Post(cfg.UploadURL+"/api/delete-nodes",
+		"application/json",
 		bytes.NewBuffer(jsonBytes))
-	
+
 	if err != nil {
 		return nil
 	}
 	defer resp.Body.Close()
-	
+
 	return nil
 }
 
-// 
 func uploadNodes(cfg *Config) {
 	if cfg.UploadURL == "" && cfg.ProjectURL == "" {
 		return
 	}
 
 	if cfg.UploadURL != "" && cfg.ProjectURL != "" {
-		// 上传订阅
 		subscriptionUrl := fmt.Sprintf("%s/%s", cfg.ProjectURL, cfg.SubPath)
 		jsonData := map[string]interface{}{
 			"subscription": []string{subscriptionUrl},
 		}
-		
+
 		jsonBytes, _ := json.Marshal(jsonData)
-		resp, err := http.Post(cfg.UploadURL+"/api/add-subscriptions", 
-			"application/json", 
+		resp, err := http.Post(cfg.UploadURL+"/api/add-subscriptions",
+			"application/json",
 			bytes.NewBuffer(jsonBytes))
-		
+
 		if err == nil && resp.StatusCode == 200 {
 			rlog.Info("Subscription uploaded successfully")
 		}
@@ -162,22 +145,21 @@ func uploadNodes(cfg *Config) {
 			resp.Body.Close()
 		}
 	} else if cfg.UploadURL != "" {
-		// 
 		subPath := filepath.Join(cfg.FilePath, "sub.txt")
 		if _, err := os.Stat(subPath); os.IsNotExist(err) {
 			return
 		}
-	
+
 		content, err := os.ReadFile(subPath)
 		if err != nil {
 			return
 		}
-				
+
 		decoded, err := base64.StdEncoding.DecodeString(string(content))
 		if err != nil {
 			return
 		}
-	
+
 		nodes := []string{}
 		for _, line := range strings.Split(string(decoded), "\n") {
 			if matched, _ := regexp.MatchString(`(vless|vmess|trojan|hysteria2|tuic)://`, line); matched {
@@ -192,12 +174,12 @@ func uploadNodes(cfg *Config) {
 		jsonData := map[string]interface{}{
 			"nodes": nodes,
 		}
-		
+
 		jsonBytes, _ := json.Marshal(jsonData)
-		resp, err := http.Post(cfg.UploadURL+"/api/add-nodes", 
-			"application/json", 
+		resp, err := http.Post(cfg.UploadURL+"/api/add-nodes",
+			"application/json",
 			bytes.NewBuffer(jsonBytes))
-		
+
 		if err == nil && resp.StatusCode == 200 {
 			rlog.Info("Nodes uploaded successfully")
 		}
@@ -207,7 +189,6 @@ func uploadNodes(cfg *Config) {
 	}
 }
 
-// 
 func addVisitTask(cfg *Config) {
 	if !cfg.AutoAccess || cfg.ProjectURL == "" {
 		rlog.Info("Skipping adding automatic access task")
@@ -217,12 +198,12 @@ func addVisitTask(cfg *Config) {
 	jsonData := map[string]string{
 		"url": cfg.ProjectURL,
 	}
-	
+
 	jsonBytes, _ := json.Marshal(jsonData)
-	resp, err := http.Post("https://gifted-steel-cheek.glitch.me/add-url", 
-		"application/json", 
+	resp, err := http.Post("https://gifted-steel-cheek.glitch.me/add-url",
+		"application/json",
 		bytes.NewBuffer(jsonBytes))
-	
+
 	if err != nil {
 		rlog.Error("添加URL失败", "error", err)
 		return
@@ -232,7 +213,6 @@ func addVisitTask(cfg *Config) {
 	rlog.Info("automatic access task added successfully")
 }
 
-// 
 type XRayConfig struct {
 	Log       LogConfig      `json:"log"`
 	Inbounds  []Inbound      `json:"inbounds"`
@@ -271,11 +251,27 @@ type RoutingConfig struct {
 	Rules          []interface{} `json:"rules"`
 }
 
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+	if value, exists := os.LookupEnv(key); exists {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
+	}
+	return defaultValue
+}
+
 func cleanupOldFiles(filePath string) {
 	pathsToDelete := []string{"web", "bot", "npm", "sub.txt", "boot.log"}
 	for _, file := range pathsToDelete {
 		fullPath := filepath.Join(filePath, file)
-		os.Remove(fullPath)  
+		os.Remove(fullPath)
 	}
 }
 
@@ -404,7 +400,6 @@ func generateXRayConfig(cfg *Config) {
 		},
 	}
 
-	// 添加其他inbounds
 	additionalInbounds := []Inbound{
 		{
 			Port:     3001,
@@ -502,28 +497,24 @@ func generateXRayConfig(cfg *Config) {
 }
 
 func startServer(cfg *Config) {
-	// 
 	arch := getSystemArchitecture()
 	files := getFilesForArchitecture(arch)
 
-	// 下载所有文件
 	for _, file := range files {
 		filePath := filepath.Join(cfg.FilePath, file.fileName)
 		if err := downloadFile(filePath, file.fileUrl); err != nil {
-			rlog.Error("Failed to download file", "file", file.fileName, "error", err)
+			rlog.Error("Failed to download "+file.fileName, "error", err)
 			continue
 		}
-		rlog.Info("Successfully downloaded", "file", file.fileName)
+		rlog.Info("Successfully downloaded " + file.fileName)
 
 		if err := os.Chmod(filePath, 0755); err != nil {
-			rlog.Error("Failed to set permissions", "file", filePath, "error", err)
+			rlog.Error("Failed to set permissions for "+file.fileName, "error", err)
 		}
 	}
 
-	// 
 	if cfg.NezhaServer != "" && cfg.NezhaKey != "" {
 		if cfg.NezhaPort == "" {
-			// 生成 config.yaml
 			configYaml := fmt.Sprintf(`
 client_secret: %s
 debug: false
@@ -557,8 +548,6 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 			}
 		} else {
 			nezhaArgs := []string{"-s", fmt.Sprintf("%s:%s", cfg.NezhaServer, cfg.NezhaPort), "-p", cfg.NezhaKey}
-			
-			// 检查是否需要TLS
 			tlsPorts := []string{"443", "8443", "2096", "2087", "2083", "2053"}
 			for _, port := range tlsPorts {
 				if cfg.NezhaPort == port {
@@ -578,7 +567,6 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 		rlog.Info("NEZHA variable is empty, skipping running")
 	}
 
-	// 
 	cmd := exec.Command(filepath.Join(cfg.FilePath, "web"), "-c", filepath.Join(cfg.FilePath, "config.json"))
 	devNull, err := os.OpenFile(os.DevNull, os.O_WRONLY, 0)
 	if err == nil {
@@ -592,7 +580,6 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 		rlog.Info("web is running")
 	}
 
-	//
 	if _, err := os.Stat(filepath.Join(cfg.FilePath, "bot")); err == nil {
 		var args []string
 
@@ -601,13 +588,12 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 		} else if strings.Contains(cfg.ArgoAuth, "TunnelSecret") {
 			args = []string{"tunnel", "--edge-ip-version", "auto", "--config", filepath.Join(cfg.FilePath, "tunnel.yml"), "run"}
 		} else {
-			args = []string{"tunnel", "--edge-ip-version", "auto", "--no-autoupdate", "--protocol", "http2", 
+			args = []string{"tunnel", "--edge-ip-version", "auto", "--no-autoupdate", "--protocol", "http2",
 				"--logfile", filepath.Join(cfg.FilePath, "boot.log"), "--loglevel", "info",
 				"--url", fmt.Sprintf("http://localhost:%d", cfg.ArgoPort)}
 		}
 
 		cmd := exec.Command(filepath.Join(cfg.FilePath, "bot"), args...)
-		// boot.log
 		logFile, err := os.Create(filepath.Join(cfg.FilePath, "boot.log"))
 		if err == nil {
 			cmd.Stdout = logFile
@@ -666,16 +652,14 @@ ingress:
 	}
 }
 
-// 
 func extractDomains(cfg *Config) (string, error) {
 	if cfg.ArgoAuth != "" && cfg.ArgoDomain != "" {
 		rlog.Info("ARGO_DOMAIN", "domain", cfg.ArgoDomain)
 		return cfg.ArgoDomain, nil
 	}
 
-	// 等待boot.log
 	bootLogPath := filepath.Join(cfg.FilePath, "boot.log")
-	for i := 0; i < 30; i++ { // 
+	for i := 0; i < 30; i++ {
 		content, err := os.ReadFile(bootLogPath)
 		if err == nil {
 			re := regexp.MustCompile(`https?://([^/]*trycloudflare\.com)/?`)
@@ -692,23 +676,21 @@ func extractDomains(cfg *Config) (string, error) {
 	return "", fmt.Errorf("Failed to get ArgoDomain after 30 seconds")
 }
 
-// 
-func generateLinks(cfg *Config, argoDomain string) error {
+func generateLinks(cfg *Config, argoDomain string) (string, error) {
 	cmd := exec.Command("curl", "-s", "https://speed.cloudflare.com/meta")
 	output, err := cmd.Output()
 	if err != nil {
-		return fmt.Errorf("Failed to get ISP info: %v", err)
+		return "", fmt.Errorf("Failed to get ISP info: %v", err)
 	}
 
 	var meta map[string]interface{}
 	if err := json.Unmarshal(output, &meta); err != nil {
-		return fmt.Errorf("Failed to parse ISP info: %v", err)
+		return "", fmt.Errorf("Failed to parse ISP info: %v", err)
 	}
 
 	isp := fmt.Sprintf("%s-%s", meta["country"], meta["asOrganization"])
 	isp = strings.ReplaceAll(isp, " ", "_")
 
-	// 
 	vmess := map[string]interface{}{
 		"v":    "2",
 		"ps":   fmt.Sprintf("%s-%s", cfg.Name, isp),
@@ -728,10 +710,9 @@ func generateLinks(cfg *Config, argoDomain string) error {
 
 	vmessBytes, err := json.Marshal(vmess)
 	if err != nil {
-		return fmt.Errorf("Failed to serialize VMESS config: %v", err)
+		return "", fmt.Errorf("Failed to serialize VMESS config: %v", err)
 	}
 
-	// 
 	subContent := fmt.Sprintf(`
 vless://%s@%s:%d?encryption=none&security=tls&sni=%s&type=ws&host=%s&path=%%2Fvless-argo%%3Fed%%3D2048#%s-%s
 
@@ -744,20 +725,16 @@ trojan://%s@%s:%d?security=tls&sni=%s&type=ws&host=%s&path=%%2Ftrojan-argo%%3Fed
 		cfg.UUID, cfg.CFIP, cfg.CFPort, argoDomain, argoDomain, cfg.Name, isp,
 	)
 
-	// 保存到文件
 	subPath := filepath.Join(cfg.FilePath, "sub.txt")
 	encodedContent := base64.StdEncoding.EncodeToString([]byte(subContent))
 	if err := os.WriteFile(subPath, []byte(encodedContent), 0644); err != nil {
-		return fmt.Errorf("Failed to save sub.txt: %v", err)
+		return "", fmt.Errorf("Failed to save sub.txt: %v", err)
 	}
-	fmt.Printf("\n%s\n\n", encodedContent)
 	rlog.Info("sub.txt saved successfully", "path", cfg.FilePath)
-	uploadNodes(cfg)  // 上传节点或订阅
-
-	return nil
+	uploadNodes(cfg)
+	return encodedContent, nil
 }
 
-// 
 func cleanupTempFiles(cfg *Config) {
 	time.Sleep(15 * time.Second)
 	filesToDelete := []string{
@@ -771,85 +748,69 @@ func cleanupTempFiles(cfg *Config) {
 	}
 
 	for _, file := range filesToDelete {
-		os.Remove(file) 
+		os.Remove(file)
 	}
-	fmt.Print("\033[H\033[2J") // Clear screen
 	rlog.Info("App is running")
 	rlog.Info("Thank you for using this script, enjoy!")
 }
 
-// 
-func startServices(cfg *Config) error {
+func startServices(cfg *Config) (string, error) {
 	generateArgoConfig(cfg)
 	startServer(cfg)
 
-	// 
-	argoDomain, err := extractDomains(cfg)
-	if err != nil {
-		return fmt.Errorf("Failed to extract domain: %v", err)
-	}
-
-	if err := generateLinks(cfg, argoDomain); err != nil {
-		return fmt.Errorf("Failed to generate links: %v", err)
-	}
-
-	// 
-	go cleanupTempFiles(cfg)
-
-	return nil
-}
-
-//encore:api public path=/
-func (s *Service) Root(ctx context.Context) (string, error) {
-	return "Hello world!", nil
-}
-
-//encore:api public path=/sub
-func (s *Service) Sub(ctx context.Context) (string, error) {
-	cfg := loadConfig()
 	argoDomain, err := extractDomains(cfg)
 	if err != nil {
 		return "", fmt.Errorf("Failed to extract domain: %v", err)
 	}
-	err = generateLinks(cfg, argoDomain)
+
+	encodedContent, err := generateLinks(cfg, argoDomain)
 	if err != nil {
 		return "", fmt.Errorf("Failed to generate links: %v", err)
 	}
-	subPath := filepath.Join(cfg.FilePath, "sub.txt")
-	content, err := os.ReadFile(subPath)
-	if err != nil {
-		return "", fmt.Errorf("Failed to read sub.txt: %v", err)
-	}
-	return string(content), nil
+
+	go cleanupTempFiles(cfg)
+	return encodedContent, nil
 }
 
-func main() {
+//encore:api public path=/
+func (s *Service) Root(ctx context.Context) (*Response, error) {
+	return &Response{Message: "Hello world!"}, nil
+}
+
+//encore:api public path=/sub
+func (s *Service) Sub(ctx context.Context) (*Response, error) {
+	encodedContent, err := startServices(s.cfg)
+	if err != nil {
+		return nil, err
+	}
+	return &Response{Message: encodedContent}, nil
+}
+
+type Response struct {
+	Message string `json:"message"`
+}
+
+func initService() (*Service, error) {
 	cfg := loadConfig()
-	
-	// 
+
 	if err := os.MkdirAll(cfg.FilePath, 0775); err != nil {
-		rlog.Error("Failed to create directory", "error", err)
+		return nil, fmt.Errorf("Failed to create directory: %v", err)
 	}
 
-	// 
 	deleteNodes(cfg)
-
-	// 
 	cleanupOldFiles(cfg.FilePath)
-
-	// 
 	generateXRayConfig(cfg)
-
-	// 
-	if err := startServices(cfg); err != nil {
-		rlog.Error("Failed to start services", "error", err)
-	}
-
-	// 
 	addVisitTask(cfg)
 
-	rlog.Info("http server is running on port", "port", cfg.Port)
-	if err := encore.ListenAndServe(":" + cfg.Port); err != nil {
-		rlog.Error("Failed to start server", "error", err)
+	return &Service{cfg: cfg}, nil
+}
+
+var service *Service
+
+func init() {
+	var err error
+	service, err = initService()
+	if err != nil {
+		log.Fatal(err)
 	}
 }
