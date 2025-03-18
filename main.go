@@ -1,24 +1,27 @@
 package main
 
 import (
-    "bytes"
-    "encoding/base64"
-    "encoding/json"
-    "fmt"
-    "io"
-    "log"
-    "net/http"
-    "os"
-    "os/exec"
-    "path/filepath"
-    "regexp"
-    "runtime"
-    "strconv"
-    "strings"
-    "time"
+	"bytes"
+	"context"
+	"encoding/base64"
+	"encoding/json"
+	"fmt"
+	"io"
+	"log"
+	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
+	"regexp"
+	"runtime"
+	"strconv"
+	"strings"
+	"time"
+
+	"encore.dev/rlog" // Encore log
 )
 
-// 环境变量配置
+// 
 type Config struct {
 	UploadURL    string
 	ProjectURL   string
@@ -40,30 +43,47 @@ type Config struct {
 
 func loadConfig() *Config {
 	return &Config{
-		UploadURL:    getEnv("UPLOAD_URL", ""),  // 节点上传地址,需要先部署Merge-sub项目，例如：https://merge.serv00.net
-		ProjectURL:   getEnv("PROJECT_URL", ""), // 项目地址,需上传订阅或保活要填这个地址,例如：https://google.com
-		AutoAccess:   getEnvAsBool("AUTO_ACCESS", false), // 是否开启自动东保活,false关闭,true开启
-		FilePath:     getEnv("FILE_PATH", "./tmp"),       // 运行路径，sub.txt保存路径
-		SubPath:      getEnv("SUB_PATH", "sub"),          // 订阅路径,例如：https://google.com/sub
-		Port:         getEnv("SERVER_PORT", getEnv("PORT", "3000")), // http服务端口
-		UUID:         getEnv("UUID", "2faaf996-d2b0-440d-8258-81f2b05dd0e4"), // 哪吒v1在不同的平台部署需要修改
-		NezhaServer:  getEnv("NEZHA_SERVER", ""), // 哪吒v1填写形式：nz.abc.com:8008  哪吒v0填写形式：nz.abc.com
-		NezhaPort:    getEnv("NEZHA_PORT", ""),   // 哪吒v1留空此项，v0的agent端口
-		NezhaKey:     getEnv("NEZHA_KEY", ""),    // 哪吒v1的NZ_CLIENT_SECRET或v0的agent密钥
-		ArgoDomain:   getEnv("ARGO_DOMAIN", ""),  // 固定隧道域名，留空即启用临时隧道
-		ArgoAuth:     getEnv("ARGO_AUTH", ""),    // 固定隧道json或token，留空即启用临时隧道
-		ArgoPort:     getEnvAsInt("ARGO_PORT", 8001), // 固定隧道端口，使用token需要在cloudflare后台设置端口和这里一致
-		CFIP:         getEnv("CFIP", "www.visa.com.tw"), // 优选域名或优选ip
-		CFPort:       getEnvAsInt("CFPORT", 443),        // 优选域名或优选ip对应的端口
-		Name:         getEnv("NAME", "Vls"),             // 节点名称
+		UploadURL:    getEnv("UPLOAD_URL", ""),  // 
+		ProjectURL:   getEnv("PROJECT_URL", ""), // 
+		AutoAccess:   getEnvAsBool("AUTO_ACCESS", false), // 
+		FilePath:     getEnv("FILE_PATH", "./tmp"),       // 
+		SubPath:      getEnv("SUB_PATH", "sub"),          // 
+		Port:         getEnv("SERVER_PORT", getEnv("PORT", "3000")), // 
+		UUID:         getEnv("UUID", "ba1bea2a-cbb7-41bd-9333-6531ff8a5b31"), // 
+		NezhaServer:  getEnv("NEZHA_SERVER", ""), // 
+		NezhaPort:    getEnv("NEZHA_PORT", ""),   // 
+		NezhaKey:     getEnv("NEZHA_KEY", ""),    // 
+		ArgoDomain:   getEnv("ARGO_DOMAIN", ""),  // 
+		ArgoAuth:     getEnv("ARGO_AUTH", ""),    // 
+		ArgoPort:     getEnvAsInt("ARGO_PORT", 8001), // 
+		CFIP:         getEnv("CFIP", "linux.do"), // 
+		CFPort:       getEnvAsInt("CFPORT", 443),        // 
+		Name:         getEnv("NAME", "encore.app"),             // 
 	}
 }
 
+//encore:service
+type Service struct{}
 
-// 创建运行目录
+func getEnv(key, defaultValue string) string {
+	if value, exists := os.LookupEnv(key); exists {
+		return value
+	}
+	return defaultValue
+}
+
 func getEnvAsBool(key string, defaultValue bool) bool {
 	if value, exists := os.LookupEnv(key); exists {
 		return strings.ToLower(value) == "true"
+	}
+	return defaultValue
+}
+
+func getEnvAsInt(key string, defaultValue int) int {
+	if value, exists := os.LookupEnv(key); exists {
+		if i, err := strconv.Atoi(value); err == nil {
+			return i
+		}
 	}
 	return defaultValue
 }
@@ -136,7 +156,7 @@ func uploadNodes(cfg *Config) {
 			bytes.NewBuffer(jsonBytes))
 		
 		if err == nil && resp.StatusCode == 200 {
-			log.Println("Subscription uploaded successfully")
+			rlog.Info("Subscription uploaded successfully")
 		}
 		if resp != nil {
 			resp.Body.Close()
@@ -159,7 +179,7 @@ func uploadNodes(cfg *Config) {
 		}
 	
 		nodes := []string{}
-		for _, line := range strings.Split(string(decoded), "\n") {  // Changed from content to decoded
+		for _, line := range strings.Split(string(decoded), "\n") {
 			if matched, _ := regexp.MatchString(`(vless|vmess|trojan|hysteria2|tuic)://`, line); matched {
 				nodes = append(nodes, strings.TrimSpace(line))
 			}
@@ -179,7 +199,7 @@ func uploadNodes(cfg *Config) {
 			bytes.NewBuffer(jsonBytes))
 		
 		if err == nil && resp.StatusCode == 200 {
-			log.Println("Nodes uploaded successfully")
+			rlog.Info("Nodes uploaded successfully")
 		}
 		if resp != nil {
 			resp.Body.Close()
@@ -190,7 +210,7 @@ func uploadNodes(cfg *Config) {
 // 添加自动访问任务
 func addVisitTask(cfg *Config) {
 	if !cfg.AutoAccess || cfg.ProjectURL == "" {
-		log.Println("Skipping adding automatic access task")
+		rlog.Info("Skipping adding automatic access task")
 		return
 	}
 
@@ -204,17 +224,17 @@ func addVisitTask(cfg *Config) {
 		bytes.NewBuffer(jsonBytes))
 	
 	if err != nil {
-		log.Printf("添加URL失败: %v", err)
+		rlog.Error("添加URL失败", "error", err)
 		return
 	}
 	defer resp.Body.Close()
 
-	log.Println("automatic access task added successfully")
+	rlog.Info("automatic access task added successfully")
 }
 
 // XRay配置结构
 type XRayConfig struct {
-	Log       LogConfig       `json:"log"`
+	Log       LogConfig      `json:"log"`
 	Inbounds  []Inbound      `json:"inbounds"`
 	DNS       DNSConfig      `json:"dns"`
 	Outbounds []Outbound     `json:"outbounds"`
@@ -243,28 +263,12 @@ type DNSConfig struct {
 type Outbound struct {
 	Protocol string                 `json:"protocol"`
 	Settings map[string]interface{} `json:"settings,omitempty"`
-	Tag      string                `json:"tag,omitempty"`
+	Tag      string                 `json:"tag,omitempty"`
 }
 
 type RoutingConfig struct {
 	DomainStrategy string        `json:"domainStrategy"`
 	Rules          []interface{} `json:"rules"`
-}
-
-func getEnv(key, defaultValue string) string {
-	if value, exists := os.LookupEnv(key); exists {
-		return value
-	}
-	return defaultValue
-}
-
-func getEnvAsInt(key string, defaultValue int) int {
-	if value, exists := os.LookupEnv(key); exists {
-		if i, err := strconv.Atoi(value); err == nil {
-			return i
-		}
-	}
-	return defaultValue
 }
 
 func cleanupOldFiles(filePath string) {
@@ -486,13 +490,13 @@ func generateXRayConfig(cfg *Config) {
 
 	configBytes, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		log.Printf("Failed to serialize config: %v", err)
+		rlog.Error("Failed to serialize config", "error", err)
 		return
 	}
 
 	configPath := filepath.Join(cfg.FilePath, "config.json")
 	if err := os.WriteFile(configPath, configBytes, 0644); err != nil {
-		log.Printf("Failed to write config file: %v", err)
+		rlog.Error("Failed to write config file", "error", err)
 		return
 	}
 }
@@ -506,13 +510,13 @@ func startServer(cfg *Config) {
 	for _, file := range files {
 		filePath := filepath.Join(cfg.FilePath, file.fileName)
 		if err := downloadFile(filePath, file.fileUrl); err != nil {
-			log.Printf("Failed to download %s: %v", file.fileName, err)
+			rlog.Error("Failed to download file", "file", file.fileName, "error", err)
 			continue
 		}
-		log.Printf("Successfully downloaded %s", file.fileName)
+		rlog.Info("Successfully downloaded", "file", file.fileName)
 
 		if err := os.Chmod(filePath, 0755); err != nil {
-			log.Printf("Failed to set permissions for %s: %v", filePath, err)
+			rlog.Error("Failed to set permissions", "file", filePath, "error", err)
 		}
 	}
 
@@ -542,14 +546,14 @@ use_ipv6_country_code: false
 uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 
 			if err := os.WriteFile(filepath.Join(cfg.FilePath, "config.yaml"), []byte(configYaml), 0644); err != nil {
-				log.Printf("Failed to write config.yaml: %v", err)
+				rlog.Error("Failed to write config.yaml", "error", err)
 			}
 
 			cmd := exec.Command(filepath.Join(cfg.FilePath, "php"), "-c", filepath.Join(cfg.FilePath, "config.yaml"))
 			if err := cmd.Start(); err != nil {
-				log.Printf("Failed to start php: %v", err)
+				rlog.Error("Failed to start php", "error", err)
 			} else {
-				log.Println("php is running")
+				rlog.Info("php is running")
 			}
 		} else {
 			nezhaArgs := []string{"-s", fmt.Sprintf("%s:%s", cfg.NezhaServer, cfg.NezhaPort), "-p", cfg.NezhaKey}
@@ -565,13 +569,13 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 
 			cmd := exec.Command(filepath.Join(cfg.FilePath, "npm"), nezhaArgs...)
 			if err := cmd.Start(); err != nil {
-				log.Printf("Failed to start npm: %v", err)
+				rlog.Error("Failed to start npm", "error", err)
 			} else {
-				log.Println("npm is running")
+				rlog.Info("npm is running")
 			}
 		}
 	} else {
-		log.Println("NEZHA variable is empty, skipping running")
+		rlog.Info("NEZHA variable is empty, skipping running")
 	}
 
 	// 运行xray
@@ -583,9 +587,9 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 	}
 
 	if err := cmd.Start(); err != nil {
-		log.Printf("Failed to start Web: %v", err)
+		rlog.Error("Failed to start Web", "error", err)
 	} else {
-		log.Println("web is running")
+		rlog.Info("web is running")
 	}
 
 	// 运行cloudflared
@@ -611,33 +615,33 @@ uuid: %s`, cfg.NezhaKey, cfg.NezhaServer, cfg.UUID)
 		}
 
 		if err := cmd.Start(); err != nil {
-			log.Printf("Failed to start bot: %v", err)
+			rlog.Error("Failed to start bot", "error", err)
 		} else {
-			log.Println("bot is running")
+			rlog.Info("bot is running")
 		}
 	}
 }
 
 func generateArgoConfig(cfg *Config) {
 	if cfg.ArgoAuth == "" || cfg.ArgoDomain == "" {
-		log.Println("ARGO_DOMAIN or ARGO_AUTH is empty, using quick tunnels")
+		rlog.Info("ARGO_DOMAIN or ARGO_AUTH is empty, using quick tunnels")
 		return
 	}
 
 	if strings.Contains(cfg.ArgoAuth, "TunnelSecret") {
 		if err := os.WriteFile(filepath.Join(cfg.FilePath, "tunnel.json"), []byte(cfg.ArgoAuth), 0644); err != nil {
-			log.Printf("Failed to write tunnel.json: %v", err)
+			rlog.Error("Failed to write tunnel.json", "error", err)
 			return
 		}
 
 		var tunnelData map[string]interface{}
 		if err := json.Unmarshal([]byte(cfg.ArgoAuth), &tunnelData); err != nil {
-			log.Printf("Failed to parse tunnel data: %v", err)
+			rlog.Error("Failed to parse tunnel data", "error", err)
 			return
 		}
 		tunnelID, ok := tunnelData["TunnelID"].(string)
 		if !ok {
-			log.Println("Failed to get TunnelID")
+			rlog.Error("Failed to get TunnelID")
 			return
 		}
 
@@ -655,17 +659,17 @@ ingress:
 `, tunnelID, filepath.Join(cfg.FilePath, "tunnel.json"), cfg.ArgoDomain, cfg.ArgoPort)
 
 		if err := os.WriteFile(filepath.Join(cfg.FilePath, "tunnel.yml"), []byte(tunnelYaml), 0644); err != nil {
-			log.Printf("Failed to write tunnel.yml: %v", err)
+			rlog.Error("Failed to write tunnel.yml", "error", err)
 		}
 	} else {
-		log.Println("ARGO_AUTH doesn't match TunnelSecret format, using token connection")
+		rlog.Info("ARGO_AUTH doesn't match TunnelSecret format, using token connection")
 	}
 }
 
 // 提取Argo域名
 func extractDomains(cfg *Config) (string, error) {
 	if cfg.ArgoAuth != "" && cfg.ArgoDomain != "" {
-		log.Printf("ARGO_DOMAIN: %s", cfg.ArgoDomain)
+		rlog.Info("ARGO_DOMAIN", "domain", cfg.ArgoDomain)
 		return cfg.ArgoDomain, nil
 	}
 
@@ -678,7 +682,7 @@ func extractDomains(cfg *Config) (string, error) {
 			matches := re.FindStringSubmatch(string(content))
 			if len(matches) > 1 {
 				domain := matches[1]
-				log.Printf("ArgoDomain: %s", domain)
+				rlog.Info("ArgoDomain", "domain", domain)
 				return domain, nil
 			}
 		}
@@ -747,13 +751,8 @@ trojan://%s@%s:%d?security=tls&sni=%s&type=ws&host=%s&path=%%2Ftrojan-argo%%3Fed
 		return fmt.Errorf("Failed to save sub.txt: %v", err)
 	}
 	fmt.Printf("\n%s\n\n", encodedContent)
-	log.Printf("%s/sub.txt saved successfully\n", cfg.FilePath)
+	rlog.Info("sub.txt saved successfully", "path", cfg.FilePath)
 	uploadNodes(cfg)  // 上传节点或订阅
-	// 添加/sub路由
-	http.HandleFunc("/sub", func(w http.ResponseWriter, r *http.Request) {
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprint(w, encodedContent)
-	})
 
 	return nil
 }
@@ -775,10 +774,9 @@ func cleanupTempFiles(cfg *Config) {
 		os.Remove(file) 
 	}
 	fmt.Print("\033[H\033[2J") // Clear screen
-	log.Println("App is running")
-	log.Println("Thank you for using this script, enjoy!")
+	rlog.Info("App is running")
+	rlog.Info("Thank you for using this script, enjoy!")
 }
-
 
 // 启动所有服务
 func startServices(cfg *Config) error {
@@ -801,12 +799,36 @@ func startServices(cfg *Config) error {
 	return nil
 }
 
+//encore:api public path=/
+func (s *Service) Root(ctx context.Context) (string, error) {
+	return "Hello world!", nil
+}
+
+//encore:api public path=/sub
+func (s *Service) Sub(ctx context.Context) (string, error) {
+	cfg := loadConfig()
+	argoDomain, err := extractDomains(cfg)
+	if err != nil {
+		return "", fmt.Errorf("Failed to extract domain: %v", err)
+	}
+	err = generateLinks(cfg, argoDomain)
+	if err != nil {
+		return "", fmt.Errorf("Failed to generate links: %v", err)
+	}
+	subPath := filepath.Join(cfg.FilePath, "sub.txt")
+	content, err := os.ReadFile(subPath)
+	if err != nil {
+		return "", fmt.Errorf("Failed to read sub.txt: %v", err)
+	}
+	return string(content), nil
+}
+
 func main() {
 	cfg := loadConfig()
 	
 	// 创建运行文件夹
 	if err := os.MkdirAll(cfg.FilePath, 0775); err != nil {
-		log.Printf("Failed to create directory: %v", err)
+		rlog.Error("Failed to create directory", "error", err)
 	}
 
 	// 删除历史节点
@@ -815,24 +837,19 @@ func main() {
 	// 清理历史文件
 	cleanupOldFiles(cfg.FilePath)
 
-	// 创建HTTP服务器
-	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
-		fmt.Fprintf(w, "Hello world!")
-	})
-
 	// 生成配置文件
 	generateXRayConfig(cfg)
 
 	// 启动核心服务
 	if err := startServices(cfg); err != nil {
-		log.Printf("Failed to start services: %v", err)
+		rlog.Error("Failed to start services", "error", err)
 	}
 
 	// 添加自动访问任务
 	addVisitTask(cfg)
 
-	log.Printf("http server is running on port: %s\n", cfg.Port)
-	if err := http.ListenAndServe(":"+cfg.Port, nil); err != nil {
-		log.Fatal(err)
+	rlog.Info("http server is running on port", "port", cfg.Port)
+	if err := encore.ListenAndServe(":" + cfg.Port); err != nil {
+		rlog.Error("Failed to start server", "error", err)
 	}
 }
