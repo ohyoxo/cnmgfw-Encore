@@ -5,8 +5,6 @@ on:
     branches:
       - main
 
-  workflow_dispatch:  # 手动触发
-
 jobs:
   deploy:
     runs-on: ubuntu-latest
@@ -22,8 +20,23 @@ jobs:
       - name: Install Encore CLI
         run: curl -L https://encore.dev/install.sh | bash
 
+      - name: Debug Secrets
+        run: |
+          echo "ENCORE_AUTH_TOKEN from secrets: ${{ secrets.ENCORE_AUTH_TOKEN }}"
+          if [ -z "${{ secrets.ENCORE_AUTH_TOKEN }}" ]; then
+            echo "Error: ENCORE_AUTH_TOKEN is empty!"
+            exit 1
+          else
+            echo "ENCORE_AUTH_TOKEN is set, proceeding..."
+          fi
+
       - name: Deploy to Encore
         run: |
           export PATH=$PATH:/home/runner/.encore/bin
-          encore auth login --auth-key $ENCORE_AUTH_TOKEN
+          echo "ENCORE_AUTH_TOKEN in env: $ENCORE_AUTH_TOKEN"
+          if [ -z "$ENCORE_AUTH_TOKEN" ]; then
+            echo "Error: ENCORE_AUTH_TOKEN is still empty in env!"
+            exit 1
+          fi
+          encore auth login --auth-key "$ENCORE_AUTH_TOKEN"
           encore deploy --app-id cnmgfw-ncore-grq2
